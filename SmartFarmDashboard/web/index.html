@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="SmartFarm Dashboard — Interactive isometric smart farming monitor with real-time MQTT">
+    <title>🌾 SmartFarm Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            overflow-x: auto;
+            overflow-y: hidden;
+            background: #0a0f1a;
+            font-family: 'Inter', system-ui, sans-serif;
+            color: #e0e8f0;
+            user-select: none;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(90, 150, 230, 0.5) rgba(8, 16, 40, 0.5);
+        }
+        body::-webkit-scrollbar {
+            height: 12px;
+        }
+        body::-webkit-scrollbar-track {
+            background: rgba(8, 16, 40, 0.8);
+        }
+        body::-webkit-scrollbar-thumb {
+            background: rgba(90, 150, 230, 0.5);
+            border-radius: 6px;
+        }
+
+        /* ── Canvas ─────────────────────────────────────── */
+        #farm-canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* ── Dashboard Panel ────────────────────────────── */
+        #dashboard {
+            position: fixed;
+            top: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            min-width: 360px;
+            max-width: 90vw;
+            padding: 16px 28px 18px;
+            background: rgba(8, 16, 40, 0.55);
+            backdrop-filter: blur(24px) saturate(1.3);
+            -webkit-backdrop-filter: blur(24px) saturate(1.3);
+            border: 1px solid rgba(90, 150, 230, 0.2);
+            border-radius: 18px;
+            box-shadow:
+                0 8px 32px rgba(0, 0, 0, 0.35),
+                inset 0 1px 0 rgba(255, 255, 255, 0.06);
+            z-index: 10;
+            transition: box-shadow 0.4s ease;
+        }
+        #dashboard:hover, #relays-panel:hover {
+            box-shadow:
+                0 8px 40px rgba(30, 80, 180, 0.25),
+                inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        }
+
+        /* ── Relays Panel (Sidebar Kanan) ────────────────── */
+        #relays-panel {
+            position: fixed;
+            top: 50%;
+            right: 16px;
+            transform: translateY(-50%);
+            width: 200px;
+            padding: 16px;
+            background: rgba(8, 16, 40, 0.55);
+            backdrop-filter: blur(24px) saturate(1.3);
+            -webkit-backdrop-filter: blur(24px) saturate(1.3);
+            border: 1px solid rgba(90, 150, 230, 0.2);
+            border-radius: 18px;
+            box-shadow:
+                0 8px 32px rgba(0, 0, 0, 0.35),
+                inset 0 1px 0 rgba(255, 255, 255, 0.06);
+            z-index: 10;
+            transition: box-shadow 0.4s ease;
+        }
+
+        .dash-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+        .dash-title {
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            color: rgba(200, 220, 255, 0.9);
+        }
+        .dash-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            color: rgba(160, 190, 230, 0.7);
+        }
+        .dash-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: #3d6;
+            box-shadow: 0 0 8px rgba(50, 220, 100, 0.5);
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+        .dash-dot.disconnected {
+            background: #d44;
+            box-shadow: 0 0 8px rgba(220, 60, 60, 0.5);
+        }
+
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        .dash-items {
+            display: flex;
+            gap: 8px;
+            justify-content: space-between;
+        }
+        .dash-item {
+            flex: 1;
+            text-align: center;
+            padding: 8px 6px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            transition: background 0.3s, border-color 0.3s;
+        }
+        .dash-item:hover {
+            background: rgba(255, 255, 255, 0.06);
+            border-color: rgba(255, 255, 255, 0.1);
+        }
+        .dash-item.interactive {
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .dash-item.interactive:hover {
+            background: rgba(255, 255, 255, 0.12);
+            border-color: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+        .dash-item.interactive:active {
+            transform: translateY(0);
+        }
+        .dash-icon {
+            font-size: 18px;
+            display: block;
+            margin-bottom: 2px;
+        }
+        .dash-label {
+            font-size: 10px;
+            font-weight: 500;
+            color: rgba(160, 185, 225, 0.8);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+        .dash-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 15px;
+            font-weight: 500;
+            margin-top: 4px;
+            transition: color 0.4s ease;
+        }
+        .val-normal  { color: #5ee6a0; }
+        .val-warning { color: #ffc947; }
+        .val-danger  { color: #ff5555; text-shadow: 0 0 10px rgba(255, 60, 60, 0.4); }
+        .val-off     { color: #6a7080; }
+
+        /* ── Alarm Overlay ──────────────────────────────── */
+        #alarm-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 20;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        #alarm-overlay.active {
+            opacity: 1;
+        }
+        .alarm-border {
+            position: absolute;
+            inset: 0;
+            border: 4px solid transparent;
+            border-radius: 0;
+            animation: alarm-border 0.5s ease-in-out infinite alternate;
+        }
+        @keyframes alarm-border {
+            from { border-color: rgba(255, 40, 40, 0.7); box-shadow: inset 0 0 60px rgba(255, 30, 30, 0.15); }
+            to   { border-color: rgba(255, 40, 40, 0.1); box-shadow: inset 0 0 20px rgba(255, 30, 30, 0.03); }
+        }
+        .alarm-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            animation: alarm-pulse 0.8s ease-in-out infinite alternate;
+        }
+        @keyframes alarm-pulse {
+            from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+            to   { opacity: 0.6; transform: translate(-50%, -50%) scale(1.03); }
+        }
+        .alarm-text h1 {
+            font-size: 42px;
+            font-weight: 700;
+            color: #fff;
+            text-shadow:
+                0 0 20px rgba(255, 50, 30, 0.8),
+                0 0 60px rgba(255, 30, 10, 0.5),
+                0 2px 4px rgba(0, 0, 0, 0.5);
+            letter-spacing: 4px;
+        }
+        .alarm-text p {
+            margin-top: 10px;
+            font-size: 15px;
+            color: rgba(255, 200, 200, 0.9);
+        }
+
+        /* ── Debug Controls ─────────────────────────────── */
+        #debug-panel {
+            position: fixed;
+            bottom: 16px;
+            right: 16px;
+            padding: 12px 16px;
+            background: rgba(8, 16, 40, 0.6);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(90, 150, 230, 0.15);
+            border-radius: 12px;
+            font-size: 11px;
+            z-index: 15;
+            line-height: 1.8;
+        }
+        #debug-panel strong {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: rgba(160, 185, 225, 0.7);
+        }
+        .key {
+            display: inline-block;
+            padding: 1px 6px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            margin-right: 4px;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="farm-canvas"></canvas>
+
+    <!-- Dashboard Overlay -->
+    <div id="dashboard">
+        <div class="dash-header">
+            <span class="dash-title">☁  Smart Farm Cloud Monitor</span>
+            <span class="dash-status">
+                <span class="dash-dot disconnected" id="mqtt-dot"></span>
+                <span id="mqtt-label">Disconnected</span>
+            </span>
+        </div>
+        <div class="dash-section-title" style="font-size:10px; margin-bottom: 6px; color:rgba(160, 185, 225, 0.8); font-weight:600; text-transform:uppercase; letter-spacing:1px;">Sensors</div>
+        <div class="dash-items" style="margin-bottom: 12px;">
+            <div class="dash-item">
+                <span class="dash-icon">🌡️</span>
+                <span class="dash-label">Suhu</span>
+                <div class="dash-value val-normal" id="val-temp">-- °C</div>
+            </div>
+            <div class="dash-item">
+                <span class="dash-icon">💧</span>
+                <span class="dash-label">Kelembaban</span>
+                <div class="dash-value val-normal" id="val-hum">-- %</div>
+            </div>
+            <div class="dash-item">
+                <span class="dash-icon">🔥</span>
+                <span class="dash-label">Fire</span>
+                <div class="dash-value val-normal" id="val-fire">Normal</div>
+            </div>
+        </div>
+        </div>
+    </div>
+
+    <!-- Relays Panel Overlay (Sidebar Kanan) -->
+    <div id="relays-panel">
+        <div class="dash-section-title" style="font-size:10px; margin-bottom: 12px; color:rgba(160, 185, 225, 0.8); font-weight:600; text-transform:uppercase; letter-spacing:1px; text-align: center;">Relays Control</div>
+        <div class="dash-items" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;">
+            <div class="dash-item interactive" id="btn-r1" title="Klik untuk Toggle Air Mancur">
+                <span class="dash-icon">⛲</span>
+                <span class="dash-label">Relay 1</span>
+                <div class="dash-value val-off" id="val-r1">OFF</div>
+            </div>
+            <div class="dash-item interactive" id="btn-r2" title="Klik untuk Toggle Lampu Gubuk">
+                <span class="dash-icon">💡</span>
+                <span class="dash-label">Relay 2</span>
+                <div class="dash-value val-off" id="val-r2">OFF</div>
+            </div>
+            <div class="dash-item interactive" id="btn-r3" title="Klik untuk Toggle Pintu Kandang 1">
+                <span class="dash-icon">⛩️</span>
+                <span class="dash-label">Kandang 1</span>
+                <div class="dash-value val-off" id="val-r3">TUTUP</div>
+            </div>
+            <div class="dash-item interactive" id="btn-r4" title="Klik untuk Toggle Pintu Kandang 2">
+                <span class="dash-icon">⛩️</span>
+                <span class="dash-label">Kandang 2</span>
+                <div class="dash-value val-off" id="val-r4">TUTUP</div>
+            </div>
+            <div class="dash-item interactive" id="btn-r5" title="Klik untuk Toggle Pintu Kandang 3">
+                <span class="dash-icon">⛩️</span>
+                <span class="dash-label">Kandang 3</span>
+                <div class="dash-value val-off" id="val-r5">TUTUP</div>
+            </div>
+            <div class="dash-item interactive" id="btn-r6" title="Klik untuk Buka/Tutup Bendungan Sungai">
+                <span class="dash-icon">🌊</span>
+                <span class="dash-label">Bendungan</span>
+                <div class="dash-value val-off" id="val-r6">OFF</div>
+            </div>
+            <div class="dash-item interactive" id="btn-r7">
+                <span class="dash-icon">🔌</span>
+                <span class="dash-label">Relay 7</span>
+                <div class="dash-value val-off" id="val-r7">OFF</div>
+            </div>
+            <div class="dash-item interactive" id="btn-r8">
+                <span class="dash-icon">🔌</span>
+                <span class="dash-label">Relay 8</span>
+                <div class="dash-value val-off" id="val-r8">OFF</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alarm Overlay -->
+    <div id="alarm-overlay">
+        <div class="alarm-border"></div>
+        <div class="alarm-text">
+            <h1>🔥 FIRE DETECTED !</h1>
+            <p>Alarm aktif — Segera periksa area kebun</p>
+        </div>
+    </div>
+
+    <!-- Debug Panel -->
+    <div id="debug-panel">
+        <strong>Keyboard Shortcuts</strong><br>
+        <span class="key">1-8</span> Toggle Relay 1-8<br>
+        <span class="key">F</span> Toggle Fire Alarm<br>
+        <span class="key">T</span> Temperature +5°C<br>
+        <span class="key">H</span> Humidity +10%<br>
+        <span class="key">R</span> Reset All
+    </div>
+
+    <!-- MQTT.js from CDN -->
+    <script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+
+    <!-- App Scripts (v=3 forces browser to reload, bypassing cache) -->
+    <script src="js/engine.js?v=16"></script>
+    <script src="js/app.js?v=16"></script>
+</body>
+</html>
